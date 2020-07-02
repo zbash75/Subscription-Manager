@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9aIt2nRpC12Uk9gS9baDl411NQApFmC26EwAOH8WgZl5MYYxFfc+NcPb1dKGj7Sk" crossorigin="anonymous">
+    <title>Log In</title>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/js/bootstrap.min.js" integrity="sha384-OgVRvuATP1z7JjHLkuOU7Xw704+h835Lr+6QL9UvYjZE3Ipu6Tp75j7Bh/kR0JKI" crossorigin="anonymous"></script>
+</head>
+<body style="background-color:turquoise">
+    <div class="jumbotron text-center">
+        <h1>WhatsBusy Premium</h1>
+    </div>
+    <div class="container">
+        <div class="page-header">
+            <center>
+                <h2 style="margin-bottom:4%;margin-left:5%">Login</h2>
+            </center>
+        </div>
+
+        <center>
+            
+            <form name="loginForm" method="POST" onsubmit="getURL()">
+                {% csrf_token %}
+                {% for field in form %}
+                    <!--User and password information-->
+                    <div class="form-group">
+                        <center>
+                            {{ field.errors }}
+                            {{ field.label_tag }} {{ field }}
+                        </center>
+                     </div>
+                {% endfor %}
+                 <div style = "max-width:470px;">
+                    <center>
+                        <!--Login Button-->
+                       <button class="btn btn-primary" style ="border:0px; margin-top:8%;
+                          margin-left:14%;" type = "submit"
+                          value = "Login" >
+                          <strong>Login</strong>
+                       </button>
+
+                    </center>
+                 </div>
+            </form>
+        </center>
+
+        <center>
+            <div>
+                <!--Button to create a new account-->
+                <form action="/accounts/register">
+                    <button type="submit" class="btn btn-success" style="margin-top:3%; margin-left:4%;">
+                        <strong>Don't Have an Account? Register Here!</strong>
+                    </button>
+                </form>
+            </div>
+        </center>
+
+    </div>
+
+
+    <script>
+        function getURL(){
+            // Upon submitting login form, get username from value user enters into form and load corresponding homepage
+            username = document.getElementById("id_username").value
+            document.forms["loginForm"].action = "/accounts/loggedin/" + username;
+        }
+    </script>
+</body>
+</html>

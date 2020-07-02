@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Subscription Sign-Up</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script src="https://js.stripe.com/v3/"></script>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9aIt2nRpC12Uk9gS9baDl411NQApFmC26EwAOH8WgZl5MYYxFfc+NcPb1dKGj7Sk" crossorigin="anonymous">
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/js/bootstrap.min.js" integrity="sha384-OgVRvuATP1z7JjHLkuOU7Xw704+h835Lr+6QL9UvYjZE3Ipu6Tp75j7Bh/kR0JKI" crossorigin="anonymous"></script>
+
+    <style>
+      .StripeElement {
+          box-sizing: border-box;
+
+          height: 50px;
+
+          padding: 10px 12px;
+
+          margin-left: 12%;
+          margin-right: 12%;
+
+          border: 1px solid;
+          border-radius: 4px;
+          background-color: white;
+
+          box-shadow: 0 1px 3px 0 #e6ebf1;
+          -webkit-transition: box-shadow 150ms ease;
+          transition: box-shadow 150ms ease;
+        }
+
+      .StripeElement--focus {
+          box-shadow: 0 1px 3px 0 #cfd7df;
+        }
+
+      .StripeElement--invalid {
+          border-color: #fa755a;
+        }
+
+      .StripeElement--webkit-autofill {
+          background-color: #fefde5 !important;
+        }
+    </style>
+</head>
+<body style="background-color:turquoise">
+    <div class="jumbotron text-center">
+        <h1>WhatsBusy Premium</h1>
+    </div>
+    <div>
+        <!-- Plan Information -->
+        <center>
+            <h1 class="title">Subscribe to {{product.name}}</h1>
+            {% for plan in product.plan_set.all %}
+            <h3> Free Trial: {{plan.trial_period_days}} Days</h3>
+            <h3> {{plan.human_readable_price}}</h3>
+            {% endfor %}
+        </center>
+    </div>
+
+    <form id="subscription-form">
+        <div id="card-element" class="MyCardElement" style="margin-top:4%;margin-bottom:4%">
+          <!-- Stripe Elements creates Credit Card Element here -->
+        </div>
+
+        <!-- Error messages go here -->
+        <div id="card-errors" role="alert"></div>
+        <div class="text-center">
+            <button type="submit" class="btn btn-primary" id="subscribeButton">Subscribe</button>
+        </div>
+    </form>
+
+    <script type="text/javascript">
+
+        function showCardError(event) {
+          // Displays any errors on-screen inside the "card-errors" element
+          let displayError = document.getElementById('card-errors');
+          if (event.error) {
+            displayError.textContent = event.error.message;
+          } else {
+            displayError.textContent = '';
+          }
+        }
+        
+        // Adds an Event Listner to submit payment information once the Subscribe button is clicked
+        var payForm = document.getElementById('subscription-form');
+        payForm.addEventListener('submit', function(event){
+          event.preventDefault();
+          gatherPaymentInfo('{{person}}', cardElement);
+        });
+
+
+        function gatherPaymentInfo (user, cardElement) {
+          //Creates Payment Method in stripe with given card information
+          return stripe.createPaymentMethod({
+            type: 'card',
+            card: cardElement
+          }).then((result) => {
+            if (result.error) {
+              alert(result.error);
+            }
+            else{
+              // If retrying with card entered previously
+              if (localStorage.getItem('latestInvoicePaymentIntentStatus') == 'requires_payment_method'){
+                invoice = localStorage.getItem('latestInvoiceId');
+                customer_id = localStorage.getItem('customerId');
+                return retrySubscription(customer_id, invoice, result.paymentMethod.id, 'price_HL56QBN0GsZSFs');
+              }
+              else{
+                // If using the card for the first time
+                return makeSubscription(result, user);
+              }
+            }
+          }
+          ).catch((error) => {
+            alert(error);
+          });
+        }
+
+        function customerNeeded({
+          customer,
+          subscription,
+          invoice,
+          price_id,
+          payment_method,
+          isRetry,
+        }) {
+          if (subscription && (subscription.status === 'active' || subscription.status === 'trialing')) {
+            // Subscription is active, no customer actions required.
+            return { customer, subscription, price_id, payment_method };
+          }
+
+          // If it's a first payment attempt, the payment intent is on the subscription latest invoice.
+          // If it's a retry, the payment intent will be on the invoice itself.
+          let paymentIntent = invoice ? invoice.payment_intent : subscription.latest_invoice.payment_intent;
+
+          if (
+            paymentIntent.status === 'requires_action' ||
+            (isRetry === true && paymentIntent.status === 'requires_payment_method')
+          ) {
+            return stripe
+              .confirmCardPayment(paymentIntent.client_secret, {
+                payment_method: payment_method,
+              })
+              .then((result) => {
+                if (result.error) {
+                  // The card was declined.
+                  throw result;
+                } else {
+                  if (result.paymentIntent.status === 'succeeded') {
+                    // Proceed to next part of card approval
+                    return {
+                      price_id: price_id,
+                      subscription: subscription,
+                      invoice: invoice,
+                      payment_method: payment_method,
+                    };
+                  }
+                }
+              })
+              .catch((error) => {
+                showCardError(error);
+              });
+          } else {
+            // No customer action needed.
+            return { customer, subscription, price_id, payment_method };
+          }
+        }
+
+        function paymentFailed ({
+          customer,
+          subscription,
+          price_id,
+          payment_method,
+        }) {
+          if (subscription.status === 'trialing' || subscription.status === 'active') {
+            // Subscription is active, no customer actions required.
+            return {customer, subscription, price_id, payment_method};
+          } else if (
+            subscription.latest_invoice.payment_intent.status ===
+            'requires_payment_method'
+          ) {
+            // Using localStorage to keep track of the state of the retry
+            localStorage.setItem('latestInvoiceId', result.subscription.latest_invoice.id);
+            localStorage.setItem(
+              'latestInvoicePaymentIntentStatus',
+              result.subscription.latest_invoice.payment_intent.status
+            );
+            localStorage.setItem('customerId', customer.id)
+            throw { error: { message: 'Your card was declined.' } };
+          } else {
+            // Subscription is active, no customer actions required
+            return {customer, subscription, price_id, payment_method};
+          }
+        }
+
+        function getCookie(cname) {
+          // Used to get the cookie of the csrf token
+          var name = cname + "=";
+          var ca = document.cookie.split(';');
+          for(var i=0; i<ca.length; i++) {
+              var c = ca[i];
+              while (c.charAt(0)==' ') c = c.substring(1);
+              if(c.indexOf(name) == 0)
+                return c.substring(name.length,c.length);
+          }
+          return "";
+      }
+
+        function makeSubscription (result, user) {
+            const payMeth = result.paymentMethod.id;
+            // Send fetch request with user's username, WhatsBusy Premium price ID, and the payment method entered
+            const bodyParams = {
+                user: user,
+                price_id: 'price_HL56QBN0GsZSFs',
+                payment_method: result.paymentMethod.id,
+              }
+            return fetch("/new-customer/", {
+              method: 'post',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken'),
+              },
+              credentials: 'same-origin',
+              body: JSON.stringify(bodyParams),
+            }).then((response) => {
+              return response.json(); 
+            }).then((result) => {
+              if (result.error){
+                throw result;
+              }
+              return result;
+            }).then((result) => {
+              return {
+                customer: result.customer,
+                subscription: result.subscription,
+                price_id: 'price_HL56QBN0GsZSFs',
+                payment_method: payMeth,
+              };
+            })
+            // Check if  customer needs to be on session to complete the payment process.
+            .then((result) => {return customerNeeded(result);})
+            // Check if card can be successfully charged 
+            .then((result) => {return paymentFailed(result);})
+            .then((result) => {return successfulSubscription();})
+            .catch((error) => {
+              // Display any card error on Screen
+              showCardError(error);
+            });
+          }
+
+        function retrySubscription (customer_id, invoice, price_id, payment_method) {
+          return fetch('/retry-subscription/', {
+            method: 'post',
+            headers: {
+              'Content-type': 'application/json',
+            },
+            // Use invoice from previous attempt instead of username
+            body: JSON.stringify({
+              customer_id: customer_id,
+              payment_method: payment_method,
+              invoice: invoice,
+            }),
+          })
+            .then((response) => {
+              return response.json();
+            })
+            .then((result) => {
+              if (result.error) {
+                throw result;
+              }
+              return result;
+            })
+            .then((result) => {
+              return {
+                invoice: result,
+                payment_method: payment_method,
+                price_id: price_id,
+                isRetry: true,
+              };
+            })
+            // Check if  customer needs to be on session to complete the payment process.
+            .then((result) => {customerNeeded(result)})
+            .then((result) => {successfulSubscription(result)})
+            .catch((error) => {
+              // Display any card error on screen
+              showCardError(error);
+            });
+        }
+
+        function successfulSubscription() {
+          // Clear local storage and redirect to homepage
+          localStorage.clear();
+          window.location.replace("/accounts/loggedin/" + "{{person}}");
+        }
+
+        // Sets up Stripe Elements with user's key
+        var stripe = Stripe('{{key}}');
+        var elements = stripe.elements();
+
+        var style = {
+          base: {
+            color: "#32325d",
+            fontFamily: '"Helvetica Neue", Helvetica, sans-serif',
+            fontSmoothing: "antialiased",
+            fontSize: "20px",
+            "::placeholder": {
+              color: "#aab7c4"
+            }
+          },
+          invalid: {
+            color: "#fa755a",
+            iconColor: "#fa755a"
+          }
+        };
+
+        var cardElement = elements.create("card", { style: style });
+        cardElement.mount("#card-element");
+
+        cardElement.on('change', showCardError)
+    </script>
+
+</body>
+</html>
